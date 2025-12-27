@@ -35,10 +35,11 @@ function extractMeetId(url: string) {
        LAUNCH CHROME WITH FIXED SINK
        =============================== */
     const browser = await chromium.launch({
-      headless: false,
+      headless: false, // ❗ MUST BE FALSE
       env: {
         ...process.env,
-        PULSE_SINK: sinkName, // 🔥 THIS IS THE FIX
+        PULSE_SINK: sinkName,
+        DISPLAY: ':99',
       },
       args: [
         '--no-sandbox',
