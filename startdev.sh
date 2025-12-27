@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "[+] Meeting Bot starting..."
+echo "[DEV] Meeting Bot starting..."
 
 # ---------------------------
 # Environment
@@ -9,13 +9,16 @@ echo "[+] Meeting Bot starting..."
 export DISPLAY=:99
 export XDG_RUNTIME_DIR=/tmp
 export PULSE_SERVER=${PULSE_SERVER:-unix:/run/pulse/native}
+export NODE_ENV=${NODE_ENV:-development}
 
 # ---------------------------
 # Verify PulseAudio socket
 # ---------------------------
 if [[ ! -S /run/pulse/native ]]; then
   echo "[FATAL] PulseAudio socket not found at /run/pulse/native"
-  echo "Host PulseAudio must be running in system-mode"
+  echo "Dev hint:"
+  echo "  Debian desktop → user-mode PulseAudio"
+  echo "  Mount: /run/user/$(id -u)/pulse → /run/pulse"
   exit 1
 fi
 
@@ -23,11 +26,10 @@ echo "[✓] PulseAudio socket detected"
 
 # ---------------------------
 # Verify virtual sink exists
-# (created on host, not here)
 # ---------------------------
 if ! pactl list short sinks | grep -q "virtual_output"; then
-  echo "[FATAL] virtual_output sink not found"
-  echo "Create it on host using:"
+  echo "[FATAL] virtual_output sink not found on host"
+  echo "Create once on host:"
   echo "  pactl load-module module-null-sink sink_name=virtual_output"
   exit 1
 fi
@@ -37,17 +39,17 @@ echo "[✓] virtual_output sink present"
 # ---------------------------
 # Start Xvfb (headless display)
 # ---------------------------
-echo "[+] Starting Xvfb..."
-Xvfb :99 -screen 0 1280x720x24 &
+echo "[DEV] Starting Xvfb..."
+Xvfb :99 -screen 0 1440x900x24 &
 XVFB_PID=$!
 
 sleep 2
 
 # ---------------------------
-# Graceful shutdown handler
+# Graceful shutdown
 # ---------------------------
 cleanup() {
-  echo "[+] Shutting down..."
+  echo "[DEV] Shutting down..."
   if ps -p $XVFB_PID > /dev/null 2>&1; then
     kill $XVFB_PID
   fi
@@ -55,7 +57,12 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # ---------------------------
-# Start Node application
+# Start Node app (DEV)
 # ---------------------------
-echo "[+] Starting Node app..."
-exec node dist/index.js
+if command -v nodemon >/dev/null 2>&1; then
+  echo "[DEV] Using nodemon for hot reload"
+  exec nodemon --watch dist --signal SIGTERM dist/index.js
+else
+  echo "[DEV] nodemon not found, falling back to node"
+  exec node dist/index.js
+fi

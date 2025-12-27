@@ -1,16 +1,39 @@
 import { ContentType } from '../types';
 
-export const mp4Codecs = {
-  h264: 'avc1.42E01E',
-  h264_high: 'avc1.640028',
-  aac: 'mp4a.40.2'
-};
+/**
+ * Browser MediaRecorder configuration
+ * Used by Google Meet & Zoom bots
+ */
 
-export const mp4ContentType: ContentType = 'video/mp4';
-export const mp4MimeType = `${mp4ContentType};codecs="${mp4Codecs.h264},${mp4Codecs.aac}"`;
+/**
+ * MIME types (order matters)
+ * Chrome stable support
+ */
+export const webmMimeType = 'video/webm;codecs=vp9,opus';
+export const vp9MimeType = 'video/webm;codecs=vp9';
 
+/**
+ * Content types
+ */
 export const webmContentType: ContentType = 'video/webm';
-export const webmMimeType = `${webmContentType};codecs="h264,opus"`;
 
-export const vp9ContentType: ContentType = 'video/webm';
-export const vp9MimeType = `${vp9ContentType};codecs="vp9,opus"`;
+/**
+ * Chunking (browser side)
+ * MediaRecorder.start(timeslice)
+ */
+export const MEDIARECORDER_CHUNK_MS = 2000;
+
+/**
+ * File naming
+ */
+export const RECORDING_FILE_EXTENSION = '.webm';
+
+/**
+ * NOTE:
+ * - No WAV
+ * - No PulseAudio
+ * - No sample rate control (browser handles it)
+ *
+ * Audio captured = Google Meet tab audio
+ * NOT microphone
+ */

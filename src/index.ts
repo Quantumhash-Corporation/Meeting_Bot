@@ -6,6 +6,9 @@ import { globalJobStore } from './lib/globalJobStore';
 import messageBroker from './connect/messageBroker';
 import config from './config';
 
+import { SchedulerWorker } from './services/schedulerWorker';
+import { createLogger } from './util/logger';
+
 const port = 3000;
 
 // Create Express server
@@ -13,6 +16,11 @@ const server = http.createServer(app);
 
 server.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
+
+  // 🔹 START SCHEDULER WORKER
+  const logger = createLogger('scheduler');
+  const schedulerWorker = new SchedulerWorker(logger);
+  schedulerWorker.start();
 });
 
 // Flag to prevent multiple shutdown attempts
@@ -34,14 +42,12 @@ const initiateGracefulShutdown = async () => {
     // Request shutdown on the job store (prevents new jobs from being accepted)
     globalJobStore.requestShutdown();
 
-    // Wait for ongoing tasks to complete (no timeout - wait indefinitely)
+    // Wait for ongoing tasks to complete
     await globalJobStore.waitForCompletion();
 
-    // Now proceed with application shutdown
     gracefulShutdownApp();
   } catch (error) {
     console.error('Error during graceful shutdown:', error);
-    // Force exit if graceful shutdown fails
     process.exit(1);
   }
 };
@@ -50,39 +56,23 @@ process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection:', reason);
 });
 
-process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received. Starting Graceful Shutdown');
-  initiateGracefulShutdown();
-});
-
-process.on('SIGINT', () => {
-  console.log('SIGINT signal received. Starting Graceful Shutdown');
-  initiateGracefulShutdown();
-});
-
-process.on('SIGABRT', () => {
-  console.log('SIGABRT signal received. Starting Graceful Shutdown');
-  initiateGracefulShutdown();
-});
+process.on('SIGTERM', initiateGracefulShutdown);
+process.on('SIGINT', initiateGracefulShutdown);
+process.on('SIGABRT', initiateGracefulShutdown);
 
 export const gracefulShutdownApp = () => {
-  // Complete existing requests, close database connections, etc.
   server.close(async () => {
     console.log('HTTP server closed. Exiting application');
 
-    // Only shutdown Redis services if Redis is enabled
-    if (config.isRedisEnabled) {
+    if (config.redis.enabled) {
       await redisConsumerService.shutdown();
       await messageBroker.quitClientGracefully();
-    } else {
-      console.log('Redis services not running - skipping Redis shutdown');
     }
 
-    console.log('Exiting.....');
     process.exit(0);
   });
 };
