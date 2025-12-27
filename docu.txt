@@ -1,0 +1,11 @@
+Local Dev
+
+unset HEADLESS
+export DISPLAY=:0   # if GUI
+npx ts-node scheduler.ts
+
+
+VPS
+
+export HEADLESS=1
+npx ts-node scheduler.ts

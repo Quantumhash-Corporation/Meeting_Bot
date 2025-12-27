@@ -39,7 +39,11 @@ export function watchMeetingExit(
   onExit: () => Promise<void>
 ) {
   const CHECK_INTERVAL = 3000;
+  const JOIN_GRACE_PERIOD = 30_000; // ⏳ 30 sec warm-up
+  const joinedAt = Date.now();
+
   let exited = false;
+  let lastParticipantCount: number | null = null;
 
   const interval = setInterval(async () => {
     if (exited) return;
@@ -82,11 +86,21 @@ export function watchMeetingExit(
         return;
       }
 
-      /* ---------- 🔥 PARTICIPANT COUNT LOGIC ---------- */
+      /* ---------- ⏳ GRACE PERIOD ---------- */
+      if (Date.now() - joinedAt < JOIN_GRACE_PERIOD) {
+        return; // 🔕 ignore participant logic for first 30 sec
+      }
+
+      /* ---------- 👥 PARTICIPANT LOGIC ---------- */
       const participantCount = await getParticipantCount(page);
 
       if (participantCount !== null) {
-        console.log(`👥 Participants detected: ${participantCount}`);
+
+        // log ONLY when count changes
+        if (participantCount !== lastParticipantCount) {
+          console.log(`👥 Participants detected: ${participantCount}`);
+          lastParticipantCount = participantCount;
+        }
 
         if (participantCount < 2) {
           exited = true;
@@ -114,22 +128,25 @@ export function watchMeetingExit(
 async function getParticipantCount(page: Page): Promise<number | null> {
   try {
     return await page.evaluate(() => {
-      // Primary: People button aria-label
+
+      /* 1️⃣ People button aria-label */
       const peopleBtn = document.querySelector(
         'button[aria-label^="People"]'
       ) as HTMLElement | null;
 
       if (peopleBtn) {
         const label = peopleBtn.getAttribute('aria-label') || '';
-        const match = label.match(/People.*?(\d+)/);
+        const match = label.match(/(\d+)/);
         if (match) return Number(match[1]);
       }
 
-      // Fallback: visible participant count badge
-      const badge = document.querySelector('[data-participant-count]');
-      if (badge) {
-        const n = Number(badge.textContent);
-        if (!Number.isNaN(n)) return n;
+      /* 2️⃣ Video tiles count (MOST STABLE) */
+      const tiles = document.querySelectorAll(
+        'div[data-self-name], div[data-participant-id]'
+      );
+
+      if (tiles && tiles.length > 0) {
+        return tiles.length;
       }
 
       return null;

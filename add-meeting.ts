@@ -3,32 +3,20 @@ import { insertMeeting } from './src/db/meetingStore';
 /*
 Usage:
 npx ts-node add-meeting.ts <MEETING_URL> <DELAY_MINUTES>
-
-Example:
-npx ts-node add-meeting.ts https://meet.google.com/abc-defg-hij 2
 */
 
 const meetingUrl = process.argv[2];
 const delayMinutes = Number(process.argv[3] || 1);
 
-/* =========================
-   VALIDATION
-   ========================= */
-
-if (!meetingUrl || !/^https:\/\/meet\.google\.com\/[a-z0-9\-]+$/i.test(meetingUrl)) {
+if (!meetingUrl || !meetingUrl.includes('meet.google.com')) {
   console.error('❌ Invalid Google Meet URL');
-  console.error('Usage: npx ts-node add-meeting.ts <MEETING_URL> <DELAY_MINUTES>');
   process.exit(1);
 }
 
-if (!Number.isInteger(delayMinutes) || delayMinutes <= 0) {
-  console.error('❌ Delay minutes must be a positive integer');
+if (Number.isNaN(delayMinutes) || delayMinutes <= 0) {
+  console.error('❌ Delay must be a positive number');
   process.exit(1);
 }
-
-/* =========================
-   INSERT
-   ========================= */
 
 const joinAt = Date.now() + delayMinutes * 60_000;
 
@@ -41,8 +29,9 @@ try {
   console.log('🕒 Join at:', new Date(joinAt).toLocaleString());
 } catch (err: any) {
   if (err.message === 'DUPLICATE_MEETING_URL') {
-    console.warn('⚠️ Meeting already scheduled (duplicate URL)');
-    process.exit(0); // graceful exit
+    console.error('❌ You can’t add duplicate meeting links.');
+    console.error('This meeting already exists in the system.');
+    process.exit(0);
   }
 
   console.error('❌ Failed to schedule meeting');

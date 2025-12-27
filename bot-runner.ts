@@ -18,12 +18,23 @@ function extractMeetId(url: string) {
   return m[1].replace(/-/g, '_');
 }
 
+/**
+ * 🔥 Runtime-safe detection
+ * - VPS / CI / no DISPLAY  → headless
+ * - Local dev with DISPLAY → headed
+ */
+const IS_HEADLESS =
+  process.env.HEADLESS === '1' ||
+  process.env.CI === 'true' ||
+  !process.env.DISPLAY;
+
 (async () => {
   const meetId = extractMeetId(meetingUrl);
   const sinkName = `g_meet_${meetId}`;
 
   console.log(`🤖 Bot started`);
   console.log(`🔊 Using isolated sink: ${sinkName}`);
+  console.log(`🖥️ Headless mode: ${IS_HEADLESS}`);
 
   try {
     /* ===============================
@@ -32,14 +43,13 @@ function extractMeetId(url: string) {
     createSink(meetId);
 
     /* ===============================
-       LAUNCH CHROME WITH FIXED SINK
+       LAUNCH CHROME (PORTABLE)
        =============================== */
     const browser = await chromium.launch({
-      headless: false, // ❗ MUST BE FALSE
+      headless: IS_HEADLESS,
       env: {
         ...process.env,
-        PULSE_SINK: sinkName,
-        DISPLAY: ':99',
+        PULSE_SINK: sinkName, // 🔥 audio isolation
       },
       args: [
         '--no-sandbox',
@@ -58,12 +68,12 @@ function extractMeetId(url: string) {
     await page.goto(meetingUrl, { waitUntil: 'networkidle' });
     await page.waitForTimeout(5000);
 
-    // name
+    // Name
     try {
       await page.fill('input[aria-label="Your name"]', 'quantumhash');
     } catch { }
 
-    // continue without mic/cam
+    // Continue without mic/cam
     try {
       const btn = page.locator(
         'button:has-text("Continue without microphone and camera")'
@@ -74,7 +84,7 @@ function extractMeetId(url: string) {
       }
     } catch { }
 
-    // ask to join
+    // Ask to join
     await page.click(
       'button:has-text("Ask to join"), button:has-text("Join now")'
     );
@@ -82,7 +92,7 @@ function extractMeetId(url: string) {
     await waitUntilInsideMeeting(page);
 
     /* ===============================
-       START RECORDING (SINK MONITOR)
+       START RECORDING
        =============================== */
     startRecording(sinkName, sinkName);
 
@@ -95,8 +105,8 @@ function extractMeetId(url: string) {
       process.exit(0);
     };
 
-    watchMeetingExit(page, async () => {
-      await shutdown('Meeting ended');
+    watchMeetingExit(page, async (reason) => {
+      await shutdown(reason);
     });
 
     process.on('SIGINT', () => shutdown('SIGINT'));
