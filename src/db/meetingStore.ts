@@ -41,6 +41,13 @@ if (!columnExists('updated_at')) {
   db.exec(`ALTER TABLE meetings ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`);
 }
 
+if (!columnExists('last_heartbeat')) {
+  db.exec(`
+    ALTER TABLE meetings
+    ADD COLUMN last_heartbeat INTEGER
+  `);
+}
+
 /* =========================
    CONSTRAINTS
    ========================= */
@@ -84,15 +91,15 @@ export function insertMeeting(meetingUrl: string, joinAt: number) {
    🔥 NEW: BATCH FETCH
    ========================= */
 
-export function getNextMeetings(now: number, limit = 5) {
+export function getNextMeeting(now: number) {
   return db.prepare(`
     SELECT *
     FROM meetings
     WHERE status = 'scheduled'
       AND join_at <= ?
     ORDER BY join_at ASC
-    LIMIT ?
-  `).all(now, limit);
+    LIMIT 1
+  `).get(now);
 }
 
 /* =========================
@@ -100,15 +107,17 @@ export function getNextMeetings(now: number, limit = 5) {
    ========================= */
 
 export function markRunning(id: number) {
+  const now = Date.now();
+
   const res = db.prepare(`
     UPDATE meetings
     SET status='running',
         attempts = attempts + 1,
-        updated_at=?
+        updated_at=?,
+        last_heartbeat=?
     WHERE id=? AND status='scheduled'
-  `).run(Date.now(), id);
+  `).run(now, now, id);
 
-  // extra safety: if row not updated, someone else took it
   if (res.changes === 0) {
     throw new Error(`MEETING_${id}_NOT_SCHEDULED`);
   }
@@ -127,6 +136,36 @@ export function markFailed(id: number) {
   db.prepare(`
     UPDATE meetings
     SET status='failed',
+        updated_at=?
+    WHERE id=?
+  `).run(Date.now(), id);
+}
+
+export function updateHeartbeat(id: number) {
+  db.prepare(`
+    UPDATE meetings
+    SET last_heartbeat=?,
+        updated_at=?
+    WHERE id=? AND status='running'
+  `).run(Date.now(), Date.now(), id);
+}
+
+export function getStaleRunningMeetings(staleAfterMs: number) {
+  const cutoff = Date.now() - staleAfterMs;
+
+  return db.prepare(`
+    SELECT *
+    FROM meetings
+    WHERE status='running'
+      AND last_heartbeat IS NOT NULL
+      AND last_heartbeat < ?
+  `).all(cutoff);
+}
+
+export function reviveMeeting(id: number) {
+  db.prepare(`
+    UPDATE meetings
+    SET status='scheduled',
         updated_at=?
     WHERE id=?
   `).run(Date.now(), id);

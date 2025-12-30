@@ -1,16 +1,35 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import {
-  getNextMeetings,
+  getNextMeeting,
   markRunning,
   markFailed,
+  getStaleRunningMeetings,
+  reviveMeeting,
 } from './src/db/meetingStore';
 
 console.log('🧠 Scheduler started');
 
+// 🔁 CRASH AUTO-REJOIN SCANNER
+setInterval(() => {
+  try {
+    const STALE_AFTER = 90_000; // 90 sec heartbeat gap
+
+    const staleMeetings = getStaleRunningMeetings(STALE_AFTER);
+
+    for (const m of staleMeetings) {
+      console.log(`♻️ Reviving crashed meeting ${m.id}`);
+      reviveMeeting(m.id);
+    }
+  } catch (err) {
+    console.error('❌ Crash recovery error', err);
+  }
+}, 30_000); // scan every 30 sec
+
 /* ===============================
    CONFIG
    =============================== */
+const MAX_PARALLEL_BOTS = Number(process.env.MAX_PARALLEL_BOTS || 10);
 const CHECK_INTERVAL = 5000;
 const BOT_RUNNER = path.join(process.cwd(), 'bot-runner.ts');
 
@@ -21,6 +40,8 @@ const runningBots = new Set<number>();
 
 let idleLogged = false;
 
+
+
 /* ===============================
    SCHEDULER LOOP
    =============================== */
@@ -29,8 +50,7 @@ setInterval(() => {
     const now = Date.now();
 
     // 🔥 FIX: correct function + pick first meeting
-    const meetings = getNextMeetings(now, 1);
-    const meeting = meetings[0];
+    const meeting = getNextMeeting(now);
 
     if (!meeting) {
       if (!idleLogged) {

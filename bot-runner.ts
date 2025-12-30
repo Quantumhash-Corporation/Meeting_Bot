@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import { createSink, removeSink } from './src/lib/pulseManager';
 import { startRecording, stopRecording } from './src/lib/linuxAudioRecorder';
 import { waitUntilInsideMeeting, watchMeetingExit } from './src/util/meetingState';
-import { markCompleted, markFailed } from './src/db/meetingStore';
+import { markCompleted, markFailed, updateHeartbeat } from './src/db/meetingStore';
 
 const meetingDbId = process.argv[2];
 const meetingUrl = process.argv[3];
@@ -91,6 +91,13 @@ const IS_HEADLESS =
 
     await waitUntilInsideMeeting(page);
 
+    let heartbeatInterval: NodeJS.Timeout | null = null;
+
+    // ❤️ HEARTBEAT — bot alive signal
+    heartbeatInterval = setInterval(() => {
+      updateHeartbeat(Number(meetingDbId));
+    }, 30_000);
+
     /* ===============================
        START RECORDING
        =============================== */
@@ -98,6 +105,11 @@ const IS_HEADLESS =
 
     const shutdown = async (reason: string) => {
       console.log(`🛑 Bot shutdown: ${reason}`);
+
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+      }
+
       await stopRecording(sinkName);
       removeSink(sinkName);
       await browser.close();
@@ -113,6 +125,10 @@ const IS_HEADLESS =
     process.on('SIGTERM', () => shutdown('SIGTERM'));
 
   } catch (err) {
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+    }
+
     console.error('❌ Bot failed', err);
     markFailed(Number(meetingDbId));
     removeSink(sinkName);
