@@ -44,7 +44,7 @@ export class DiskUploader implements IUploader {
 
     const targetPath = path.join(
       this.chunkDir,
-      `chunk-${String(this.chunkIndex).padStart(5, '0')}.wav`
+      `chunk-${String(this.chunkIndex).padStart(5, '0')}..wav`
     );
 
     try {

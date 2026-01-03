@@ -37,12 +37,13 @@ export function startRecording(meetingId: string, sink: string) {
 
       '-ac', '2',
       '-ar', '48000',
-      '-c:a', 'pcm_s16le',
+      '-c:a', 'libmp3lame',
+      '-b:a', '128k',
 
       '-f', 'segment',
       '-segment_time', '60',
       '-reset_timestamps', '1',
-      path.join(dir, 'chunk_%03d.wav'),
+      path.join(dir, 'chunk_%03d.mp3'),
     ],
     {
       stdio: ['pipe', 'ignore', 'inherit'],
@@ -63,13 +64,13 @@ export function startRecording(meetingId: string, sink: string) {
 /* =========================
    STOP RECORDING (BULLETPROOF)
    ========================= */
-export async function stopRecording(meetingId: string) {
+export async function stopRecording(meetingId: string): Promise<string | null> {
   const rec = recorders.get(meetingId);
-  if (!rec) return;
+  if (!rec) return null;
 
   if (rec.stopping) {
     console.warn(`[audio] stop already in progress → ${meetingId}`);
-    return;
+    return null;
   }
 
   rec.stopping = true;
@@ -79,7 +80,6 @@ export async function stopRecording(meetingId: string) {
     rec.process.stdin?.write('q');
   } catch { }
 
-  // wait gracefully OR kill
   await Promise.race([
     onceClose(rec.process),
     timeout(5000),
@@ -91,22 +91,24 @@ export async function stopRecording(meetingId: string) {
     } catch { }
   }
 
-  await mergeChunks(meetingId);
+  const finalFile = await mergeChunks(meetingId);
   cleanup(meetingId);
 
   recorders.delete(meetingId);
   console.log(`[audio] recording finalized → ${meetingId}`);
+
+  return finalFile;
 }
 
 /* =========================
    MERGE CHUNKS (ORDER SAFE)
    ========================= */
-async function mergeChunks(meetingId: string) {
+async function mergeChunks(meetingId: string): Promise<string | null> {
   const dir = path.join(BASE_DIR, meetingId);
 
   const chunks = fs
     .readdirSync(dir)
-    .filter(f => f.startsWith('chunk_') && f.endsWith('.wav'))
+    .filter(f => f.startsWith('chunk_') && f.endsWith('.mp3'))
     .sort();
 
   if (!chunks.length) {
@@ -115,7 +117,7 @@ async function mergeChunks(meetingId: string) {
   }
 
   const listFile = path.join(dir, 'list.txt');
-  const finalFile = path.join(dir, 'final.wav');
+  const finalFile = path.join(dir, 'final.mp3');
 
   fs.writeFileSync(
     listFile,
@@ -132,7 +134,8 @@ async function mergeChunks(meetingId: string) {
         '-f', 'concat',
         '-safe', '0',
         '-i', listFile,
-        '-c', 'copy',
+        '-c:a', 'libmp3lame',
+        '-b:a', '128k',
         finalFile,
       ],
       { stdio: ['ignore', 'ignore', 'inherit'] }
@@ -144,6 +147,7 @@ async function mergeChunks(meetingId: string) {
   });
 
   fs.unlinkSync(listFile);
+  return finalFile;
 }
 
 /* =========================

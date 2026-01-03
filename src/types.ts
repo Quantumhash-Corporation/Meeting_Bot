@@ -58,7 +58,7 @@ export interface TranscriptDataProps {
   };
 }
 
-export type ProfileType = 'webm' | 'mp4' | 'mkv' | 'mp3' | 'wav';
+export type ProfileType = 'webm' | 'mp4' | 'mkv' | '.wav' | 'wav';
 
 export type SharePermission = 'askAi' | 'transcript' | 'summary' | 'download';
 export interface ShareDetails {
@@ -132,8 +132,8 @@ export type UnsupportedMeetingCategory = {
 }
 
 export const categories = [
-  'WaitingAtLobby', 
-  'Recording', 
+  'WaitingAtLobby',
+  'Recording',
   'Integration',
   'UnsupportedMeeting',
   'Platform',
@@ -153,8 +153,8 @@ export const subCategories = [
   'BotNotResponding',
 ] as const;
 export const logCategories: {
-  category: typeof categories[number], 
-  subCategory: typeof subCategories[number][], 
+  category: typeof categories[number],
+  subCategory: typeof subCategories[number][],
 }[] = [
   {
     category: 'WaitingAtLobby',

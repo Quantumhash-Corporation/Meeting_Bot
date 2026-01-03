@@ -9,7 +9,7 @@ import { getGoogleMeetId } from './src/util/meetingId';
    =============================== */
 
 const MEET_URL = 'https://meet.google.com/qnh-vezo-vkq';
-const BOT_NAME = 'quantumhash';
+const BOT_NAME = 'OfficeMoM Bot';
 
 /* ===============================
    HELPERS

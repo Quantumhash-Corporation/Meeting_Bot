@@ -1,8 +1,18 @@
+import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
+
+import { uploadAudioToFTP } from "./src/lib/ftpUploader";
 import { chromium } from 'playwright';
 import { createSink, removeSink } from './src/lib/pulseManager';
 import { startRecording, stopRecording } from './src/lib/linuxAudioRecorder';
 import { waitUntilInsideMeeting, watchMeetingExit } from './src/util/meetingState';
-import { markCompleted, markFailed, updateHeartbeat } from './src/db/meetingStore';
+import {
+  markCompleted,
+  markFailed,
+  updateHeartbeat,
+  updateRecordingPath,
+} from './src/db/mysqlStore';
 
 const meetingDbId = process.argv[2];
 const meetingUrl = process.argv[3];
@@ -32,7 +42,7 @@ const IS_HEADLESS =
   const meetId = extractMeetId(meetingUrl);
   const sinkName = `g_meet_${meetId}`;
 
-  console.log(`🤖 Bot started`);
+  console.log('🤖 Bot started');
   console.log(`🔊 Using isolated sink: ${sinkName}`);
   console.log(`🖥️ Headless mode: ${IS_HEADLESS}`);
 
@@ -70,7 +80,7 @@ const IS_HEADLESS =
 
     // Name
     try {
-      await page.fill('input[aria-label="Your name"]', 'quantumhash');
+      await page.fill('input[aria-label="Your name"]', 'OfficeMoM Bot');
     } catch { }
 
     // Continue without mic/cam
@@ -94,8 +104,12 @@ const IS_HEADLESS =
     let heartbeatInterval: NodeJS.Timeout | null = null;
 
     // ❤️ HEARTBEAT — bot alive signal
-    heartbeatInterval = setInterval(() => {
-      updateHeartbeat(Number(meetingDbId));
+    heartbeatInterval = setInterval(async () => {
+      try {
+        await updateHeartbeat(Number(meetingDbId));
+      } catch (err) {
+        console.warn('⚠️ Heartbeat failed (ignored)', err);
+      }
     }, 30_000);
 
     /* ===============================
@@ -106,14 +120,48 @@ const IS_HEADLESS =
     const shutdown = async (reason: string) => {
       console.log(`🛑 Bot shutdown: ${reason}`);
 
-      if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
+      try {
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+          heartbeatInterval = null;
+        }
+
+        await stopRecording(sinkName);
+      } catch { }
+
+      try {
+        removeSink(sinkName);
+      } catch { }
+
+      try {
+        // ⚠️ DO NOT await blindly
+        browser.close().catch(() => { });
+      } catch { }
+
+      try {
+        const finalAudioPath = path.join(
+          process.cwd(),
+          'data',
+          'audio',
+          sinkName,
+          'final.mp3'
+        );
+
+        if (fs.existsSync(finalAudioPath)) {
+          console.log(`📤 Uploading audio to FTP → ${finalAudioPath}`);
+          const ftpUrl = await uploadAudioToFTP(finalAudioPath);
+          console.log(`✅ Audio uploaded: ${ftpUrl}`);
+          await updateRecordingPath(Number(meetingDbId), ftpUrl);
+        }
+      } catch (err) {
+        console.error('❌ FTP upload failed', err);
       }
 
-      await stopRecording(sinkName);
-      removeSink(sinkName);
-      await browser.close();
-      markCompleted(Number(meetingDbId));
+      try {
+        await markCompleted(Number(meetingDbId));
+      } catch { }
+
+      // 🔥 HARD EXIT — NO MERCY
       process.exit(0);
     };
 
